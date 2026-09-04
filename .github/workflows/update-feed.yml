@@ -1,0 +1,52 @@
+name: ECD feed frissites
+
+on:
+  schedule:
+    # Minden nap 05:30 UTC = 07:30 nyari / 06:30 teli ido (Budapest)
+    - cron: "30 5 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ecd-feed
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Repo letoltese
+        uses: actions/checkout@v4
+
+      - name: Python beallitasa
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Feed generalasa
+        run: python3 ecd_feed.py ecd_feed.json
+
+      - name: Valtozasok commitolasa
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if git diff --quiet -- ecd_feed.json ecd_feed.csv; then
+            echo "Nincs valtozas, nincs commit."
+            exit 0
+          fi
+
+          # Rovid osszefoglalo a commit uzenetbe
+          SUMMARY=$(python3 -c "
+          import json
+          d = json.load(open('ecd_feed.json'))
+          print(f\"{d['osszesen']} termek, {d['keszleten']} keszleten, {d['akcios']} akcios\")
+          ")
+
+          git add ecd_feed.json ecd_feed.csv
+          git commit -m "Feed frissites: $SUMMARY"
+          git push
